@@ -22,18 +22,18 @@ client side code zipped in `private` subfolder.
 import os
 import sys
 import re
+import json
 import shutil
 import argparse
 import logging
 import collections
 import zipfile
+import hashlib
+import urllib.request
 
-# Name of addon
-#   - e.g. 'maya'
-ADDON_NAME = ""
-# Name of folder where client code is located to copy 'version.py'
-#   - e.g. 'ayon_maya'
-ADDON_CLIENT_DIR = ""
+
+ADDON_NAME = "ocio_dist"
+ADDON_CLIENT_DIR = "ayon_ocio"
 
 # Patterns of directories to be skipped for server part of addon
 IGNORE_DIR_PATTERNS = [
@@ -184,6 +184,34 @@ def zip_client_side(addon_package_dir, current_dir, log):
         zipf.write(src_version_path, dst_version_path)
 
 
+def download_ocio_zip(addon_package_dir, current_dir, log):
+    filename = "OpenColorIO-Configs-1.0.2.zip"
+    src_url = "https://distribute.openpype.io/thirdparty/{}".format(filename)
+
+    private_dir = os.path.join(addon_package_dir, "private")
+
+    if not os.path.exists(private_dir):
+        os.makedirs(private_dir)
+
+    ocio_zip_path = os.path.join(private_dir, filename)
+    log.debug(f"OCIO zip from {src_url} -> {ocio_zip_path}")
+
+    log.info("OCIO zip download - started")
+    urllib.request.urlretrieve(src_url, ocio_zip_path)
+    log.info("OCIO zip download - finished")
+
+    with open(ocio_zip_path, "rb") as stream:
+        filehash = hashlib.md5(stream.read()).hexdigest()
+
+    ocio_zip_info_path = os.path.join(private_dir, "ocio_zip_info.json")
+    zip_info = {
+        "filename": filename,
+        "hash": filehash
+    }
+    with open(ocio_zip_info_path, "w") as stream:
+        json.dump(zip_info, stream)
+
+
 def main(output_dir=None):
     log = logging.getLogger("create_package")
     log.info("Start creating package")
@@ -212,6 +240,8 @@ def main(output_dir=None):
         os.makedirs(addon_output_dir)
 
     copy_server_content(addon_output_dir, current_dir, log)
+
+    download_ocio_zip(addon_output_dir, current_dir, log)
 
     zip_client_side(addon_output_dir, current_dir, log)
 

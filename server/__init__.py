@@ -1,4 +1,5 @@
 import os
+import json
 
 from fastapi import Depends
 
@@ -11,23 +12,25 @@ from .version import __version__
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-class MyAddon(BaseServerAddon):
+class OCIODistAddon(BaseServerAddon):
     name = "ocio_dist"
     title = "OCIO Distribution"
     version = __version__
 
     def initialize(self):
         self.add_endpoint(
-            "ocio-file-hash",
-            self.get_ocio_file_hash,
+            "ocio_zip_info",
+            self.get_ocio_zip_info,
             method="GET",
         )
 
-    async def get_ocio_file_hash(
+    async def get_ocio_zip_info(
         self,
         user: UserEntity = Depends(dep_current_user)
-    ):
-        hash_filepath = os.path.join(CURRENT_DIR, "private", "ocio_zip_hash")
-        with open(hash_filepath, "r") as stream:
-            filehash = stream.read()
-        return filehash
+    ) -> dict[str, str]:
+        info_filepath = os.path.join(
+            CURRENT_DIR, "private", "ocio_zip_info.json"
+        )
+        with open(info_filepath, "r") as stream:
+            data = json.load(info_filepath)
+        return data
