@@ -32,7 +32,7 @@ import hashlib
 import urllib.request
 
 
-ADDON_NAME = "ocio_dist"
+ADDON_NAME = "ayon_ocio"
 ADDON_CLIENT_DIR = "ayon_ocio"
 
 # Patterns of directories to be skipped for server part of addon

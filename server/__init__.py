@@ -8,6 +8,6 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class OCIODistAddon(BaseServerAddon):
-    name = "ocio_dist"
+    name = "ayon_ocio"
     title = "OCIO Distribution"
     version = __version__

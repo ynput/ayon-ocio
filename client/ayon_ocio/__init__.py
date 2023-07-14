@@ -16,7 +16,7 @@ class OCIODistModule(OpenPypeModule):
     each client build update.
     """
 
-    name = "ocio_dist"
+    name = "ayon_ocio"
     version = __version__
 
     def initialize(self, module_settings):
