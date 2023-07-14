@@ -22,7 +22,7 @@ client side code zipped in `private` subfolder.
 import os
 import sys
 import re
-import json
+import platform
 import shutil
 import argparse
 import logging
@@ -151,31 +151,80 @@ def copy_server_content(addon_output_dir, current_dir, log):
         safe_copy_file(src_path, dst_path)
 
 
-def zip_client_side(addon_package_dir, current_dir, log):
+def download_ocio_zip(current_dir, log):
+    filename = "OpenColorIO-Configs-1.0.2.zip"
+    src_url = "https://distribute.openpype.io/thirdparty/{}".format(filename)
+    checksum = "51285a1350b31855f831d12d30ede727"  # md5
+
+    download_dir = os.path.join(current_dir, "downloads")
+    ocio_zip_path = os.path.join(download_dir, filename)
+
+    if not os.path.exists(download_dir):
+        os.makedirs(download_dir)
+
+    if os.path.exists(ocio_zip_path):
+        with open(ocio_zip_path, "rb") as stream:
+            file_checksum = hashlib.md5(stream.read()).hexdigest()
+        if checksum == file_checksum:
+            log.debug(f"OCIO zip is already downloaded {ocio_zip_path}")
+            return ocio_zip_path
+
+    log.debug(f"OCIO zip from {src_url} -> {ocio_zip_path}")
+
+    log.info("OCIO zip download - started")
+    urllib.request.urlretrieve(src_url, ocio_zip_path)
+    log.info("OCIO zip download - finished")
+    return ocio_zip_path
+
+
+class ZipFileLongPaths(zipfile.ZipFile):
+    """Allows longer paths in zip files.
+
+    Regular DOS paths are limited to MAX_PATH (260) characters, including
+    the string's terminating NUL character.
+    That limit can be exceeded by using an extended-length path that
+    starts with the '\\?\' prefix.
+    """
+    _is_windows = platform.system().lower() == "windows"
+
+    def _extract_member(self, member, tpath, pwd):
+        if self._is_windows:
+            tpath = os.path.abspath(tpath)
+            if tpath.startswith("\\\\"):
+                tpath = "\\\\?\\UNC\\" + tpath[2:]
+            else:
+                tpath = "\\\\?\\" + tpath
+
+        return super(ZipFileLongPaths, self)._extract_member(
+            member, tpath, pwd
+        )
+
+
+def zip_client_side(addon_output_dir, current_dir, log):
     """Copy and zip `client` content into 'addon_package_dir'.
 
     Args:
-        addon_package_dir (str): Output package directory path.
+        addon_output_dir (str): Output package directory path.
         current_dir (str): Directory path of addon source.
         log (logging.Logger): Logger object.
     """
 
     client_dir = os.path.join(current_dir, "client")
     if not os.path.isdir(client_dir):
-        log.info("Client directory was not found. Skipping")
-        return
+        raise ValueError("Client directory was not found. Skipping")
 
     log.info("Preparing client code zip")
-    private_dir = os.path.join(addon_package_dir, "private")
+    private_dir = os.path.join(addon_output_dir, "private")
 
     if not os.path.exists(private_dir):
         os.makedirs(private_dir)
 
+    ocio_zip_path = download_ocio_zip(current_dir, log)
     src_version_path = os.path.join(current_dir, "version.py")
     dst_version_path = os.path.join(ADDON_CLIENT_DIR, "version.py")
 
     zip_filepath = os.path.join(os.path.join(private_dir, "client.zip"))
-    with zipfile.ZipFile(zip_filepath, "w", zipfile.ZIP_DEFLATED) as zipf:
+    with ZipFileLongPaths(zip_filepath, "w", zipfile.ZIP_DEFLATED) as zipf:
         # Add client code content to zip
         for path, sub_path in find_files_in_subdir(client_dir):
             zipf.write(path, sub_path)
@@ -183,33 +232,15 @@ def zip_client_side(addon_package_dir, current_dir, log):
         # Add 'version.py' to client code
         zipf.write(src_version_path, dst_version_path)
 
-
-def download_ocio_zip(addon_package_dir, current_dir, log):
-    filename = "OpenColorIO-Configs-1.0.2.zip"
-    src_url = "https://distribute.openpype.io/thirdparty/{}".format(filename)
-
-    private_dir = os.path.join(addon_package_dir, "private")
-
-    if not os.path.exists(private_dir):
-        os.makedirs(private_dir)
-
-    ocio_zip_path = os.path.join(private_dir, filename)
-    log.debug(f"OCIO zip from {src_url} -> {ocio_zip_path}")
-
-    log.info("OCIO zip download - started")
-    urllib.request.urlretrieve(src_url, ocio_zip_path)
-    log.info("OCIO zip download - finished")
-
-    with open(ocio_zip_path, "rb") as stream:
-        filehash = hashlib.md5(stream.read()).hexdigest()
-
-    ocio_zip_info_path = os.path.join(private_dir, "ocio_zip_info.json")
-    zip_info = {
-        "filename": filename,
-        "hash": filehash
-    }
-    with open(ocio_zip_info_path, "w") as stream:
-        json.dump(zip_info, stream)
+        # Add OCIO configs to client code
+        with ZipFileLongPaths(ocio_zip_path) as ocio_zip:
+            for path_item in ocio_zip.infolist():
+                if path_item.is_dir():
+                    continue
+                src_path = path_item.filename
+                dst_path = os.path.join(
+                    ADDON_CLIENT_DIR, "configs", src_path)
+                zipf.writestr(dst_path, ocio_zip.read(src_path))
 
 
 def main(output_dir=None):
@@ -240,8 +271,6 @@ def main(output_dir=None):
         os.makedirs(addon_output_dir)
 
     copy_server_content(addon_output_dir, current_dir, log)
-
-    download_ocio_zip(addon_output_dir, current_dir, log)
 
     zip_client_side(addon_output_dir, current_dir, log)
 
