@@ -22,6 +22,7 @@ client side code zipped in `private` subfolder.
 import os
 import sys
 import re
+import json
 import platform
 import shutil
 import argparse
@@ -30,7 +31,7 @@ import collections
 import zipfile
 import hashlib
 import urllib.request
-
+from typing import Optional
 
 ADDON_NAME = "ayon_ocio"
 ADDON_CLIENT_DIR = "ayon_ocio"
@@ -243,7 +244,59 @@ def zip_client_side(addon_output_dir, current_dir, log):
                 zipf.writestr(dst_path, ocio_zip.read(src_path))
 
 
-def main(output_dir=None):
+def create_server_package(
+    output_dir: str,
+    addon_output_dir: str,
+    addon_version: str,
+    log: logging.Logger
+):
+    """Create server package zip file.
+
+    The zip file can be installed to a server using UI or rest api endpoints.
+
+    Args:
+        output_dir (str): Directory path to output zip file.
+        addon_output_dir (str): Directory path to addon output directory.
+        addon_version (str): Version of addon.
+        log (logging.Logger): Logger object.
+    """
+
+    log.info("Creating server package")
+    output_path = os.path.join(
+        output_dir, f"{ADDON_NAME}-{addon_version}.zip"
+    )
+    manifest_data: dict[str, str] = {
+        "addon_name": ADDON_NAME,
+        "addon_version": addon_version
+    }
+    with ZipFileLongPaths(output_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+        # Write a manifest to zip
+        zipf.writestr("manifest.json", json.dumps(manifest_data, indent=4))
+
+        # Move addon content to zip into 'addon' directory
+        addon_output_dir_offset = len(addon_output_dir) + 1
+        for root, _, filenames in os.walk(addon_output_dir):
+            if not filenames:
+                continue
+
+            dst_root = "addon"
+            if root != addon_output_dir_offset:
+                dst_root = os.path.join(
+                    dst_root, root[addon_output_dir_offset:]
+                )
+            for filename in filenames:
+                src_path = os.path.join(root, filename)
+                dst_path = os.path.join(dst_root, filename)
+                zipf.write(src_path, dst_path)
+
+    log.info(f"Output package can be found: {output_path}")
+
+
+def main(
+    output_dir: Optional[str]=None,
+    skip_zip: Optional[bool]=False,
+    keep_sources: Optional[bool]=False
+):
     log = logging.getLogger("create_package")
     log.info("Start creating package")
 
@@ -257,8 +310,9 @@ def main(output_dir=None):
         exec(stream.read(), version_content)
     addon_version = version_content["__version__"]
 
+    addon_output_root = os.path.join(output_dir, ADDON_NAME)
     new_created_version_dir = os.path.join(
-        output_dir, ADDON_NAME, addon_version
+        addon_output_root, addon_version
     )
     if os.path.isdir(new_created_version_dir):
         log.info(f"Purging {new_created_version_dir}")
@@ -274,11 +328,42 @@ def main(output_dir=None):
 
     zip_client_side(addon_output_dir, current_dir, log)
 
+    # Skip server zipping
+    if not skip_zip:
+        create_server_package(
+            output_dir, addon_output_dir, addon_version, log
+        )
+        # Remove sources only if zip file is created
+        if not keep_sources:
+            log.info("Removing source files for server package")
+            shutil.rmtree(addon_output_root)
+    log.info("Package creation finished")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--output_dir",
+        "--skip-zip",
+        dest="skip_zip",
+        action="store_true",
+        help=(
+            "Directory path where package will be created"
+            " (Will be purged if already exists!)"
+        )
+    )
+    parser.add_argument(
+        "--keep-sources",
+        dest="keep_sources",
+        action="store_true",
+        help=(
+            "Directory path where package will be created"
+            " (Will be purged if already exists!)"
+        )
+    )
+    parser.add_argument(
+        "-o", "--output",
+        dest="output_dir",
+        default=None,
         help=(
             "Directory path where package will be created"
             " (Will be purged if already exists!)"
@@ -286,4 +371,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args(sys.argv[1:])
-    main(args.output_dir)
+    main(args.output_dir, args.skip_zip, args.keep_sources)
