@@ -1,6 +1,6 @@
 import os
 
-from openpype.modules import OpenPypeModule
+from ayon_core.addon import AYONAddon
 
 from .version import __version__
 
@@ -8,7 +8,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_ROOT = os.path.join(CURRENT_DIR, "configs")
 
 
-class OCIODistModule(OpenPypeModule):
+class OCIODistAddon(AYONAddon):
     """OCIO addon to deploy default OCIO configs.
 
     OCIO zip is on server and can be downloaded from there. That won't be part
@@ -18,9 +18,6 @@ class OCIODistModule(OpenPypeModule):
 
     name = "ayon_ocio"
     version = __version__
-
-    def initialize(self, module_settings):
-        self.enabled = True
 
     def get_global_environments(self):
         return {
@@ -42,4 +39,4 @@ class OCIODistModule(OpenPypeModule):
 
 
 def get_ocio_config_path():
-    return OCIODistModule.get_ocio_config_dir()
+    return OCIODistAddon.get_ocio_config_dir()
