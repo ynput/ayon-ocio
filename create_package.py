@@ -33,8 +33,16 @@ import hashlib
 import urllib.request
 from typing import Optional
 
-ADDON_NAME = "ayon_ocio"
-ADDON_CLIENT_DIR = "ayon_ocio"
+import package
+
+ADDON_NAME: str = package.name
+ADDON_VERSION: str = package.version
+ADDON_CLIENT_DIR: str = package.client_dir
+
+CLIENT_VERSION_CONTENT = '''# -*- coding: utf-8 -*-
+"""Package declaring {} addon version."""
+__version__ = "{}"
+'''
 
 # Patterns of directories to be skipped for server part of addon
 IGNORE_DIR_PATTERNS = [
@@ -137,14 +145,9 @@ def copy_server_content(addon_output_dir, current_dir, log):
     filepaths_to_copy = []
     server_dirpath = os.path.join(current_dir, "server")
 
-    # Version
-    src_version_path = os.path.join(current_dir, "version.py")
-    dst_version_path = os.path.join(addon_output_dir, "version.py")
-    filepaths_to_copy.append((src_version_path, dst_version_path))
-
     for item in find_files_in_subdir(server_dirpath):
         src_path, dst_subpath = item
-        dst_path = os.path.join(addon_output_dir, dst_subpath)
+        dst_path = os.path.join(addon_output_dir, "server", dst_subpath)
         filepaths_to_copy.append((src_path, dst_path))
 
     # Copy files
@@ -201,6 +204,14 @@ class ZipFileLongPaths(zipfile.ZipFile):
         )
 
 
+def fill_client_version(current_dir):
+    version_file = os.path.join(
+        current_dir, "client", ADDON_CLIENT_DIR, "version.py"
+    )
+    with open(version_file, "w") as stream:
+        stream.write(CLIENT_VERSION_CONTENT.format(ADDON_NAME, ADDON_VERSION))
+
+
 def zip_client_side(addon_output_dir, current_dir, log):
     """Copy and zip `client` content into 'addon_package_dir'.
 
@@ -221,17 +232,12 @@ def zip_client_side(addon_output_dir, current_dir, log):
         os.makedirs(private_dir)
 
     ocio_zip_path = download_ocio_zip(current_dir, log)
-    src_version_path = os.path.join(current_dir, "version.py")
-    dst_version_path = os.path.join(ADDON_CLIENT_DIR, "version.py")
 
     zip_filepath = os.path.join(os.path.join(private_dir, "client.zip"))
     with ZipFileLongPaths(zip_filepath, "w", zipfile.ZIP_DEFLATED) as zipf:
         # Add client code content to zip
         for path, sub_path in find_files_in_subdir(client_dir):
             zipf.write(path, sub_path)
-
-        # Add 'version.py' to client code
-        zipf.write(src_version_path, dst_version_path)
 
         # Add OCIO configs to client code
         with ZipFileLongPaths(ocio_zip_path) as ocio_zip:
@@ -245,6 +251,7 @@ def zip_client_side(addon_output_dir, current_dir, log):
 
 
 def create_server_package(
+    current_dir: str,
     output_dir: str,
     addon_output_dir: str,
     addon_version: str,
@@ -265,13 +272,13 @@ def create_server_package(
     output_path = os.path.join(
         output_dir, f"{ADDON_NAME}-{addon_version}.zip"
     )
-    manifest_data: dict[str, str] = {
-        "addon_name": ADDON_NAME,
-        "addon_version": addon_version
-    }
+
     with ZipFileLongPaths(output_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         # Write a manifest to zip
-        zipf.writestr("manifest.json", json.dumps(manifest_data, indent=4))
+        zipf.write(
+            os.path.join(current_dir, "package.py"),
+            "package.py"
+        )
 
         # Move addon content to zip into 'addon' directory
         addon_output_dir_offset = len(addon_output_dir) + 1
@@ -279,14 +286,15 @@ def create_server_package(
             if not filenames:
                 continue
 
-            dst_root = "addon"
+            dst_root = None
             if root != addon_output_dir:
-                dst_root = os.path.join(
-                    dst_root, root[addon_output_dir_offset:]
-                )
+                dst_root = root[addon_output_dir_offset:]
+
             for filename in filenames:
                 src_path = os.path.join(root, filename)
-                dst_path = os.path.join(dst_root, filename)
+                dst_path = filename
+                if dst_root:
+                    dst_path = os.path.join(dst_root, filename)
                 zipf.write(src_path, dst_path)
 
     log.info(f"Output package can be found: {output_path}")
@@ -318,6 +326,8 @@ def main(
         log.info(f"Purging {new_created_version_dir}")
         shutil.rmtree(output_dir)
 
+    fill_client_version(current_dir)
+
     log.info(f"Preparing package for {ADDON_NAME}-{addon_version}")
 
     addon_output_dir = os.path.join(output_dir, ADDON_NAME, addon_version)
@@ -331,7 +341,7 @@ def main(
     # Skip server zipping
     if not skip_zip:
         create_server_package(
-            output_dir, addon_output_dir, addon_version, log
+            current_dir, output_dir, addon_output_dir, addon_version, log
         )
         # Remove sources only if zip file is created
         if not keep_sources:
