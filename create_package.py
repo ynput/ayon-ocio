@@ -312,15 +312,9 @@ def main(
     if not output_dir:
         output_dir = os.path.join(current_dir, "package")
 
-    version_filepath = os.path.join(current_dir, "version.py")
-    version_content = {}
-    with open(version_filepath, "r") as stream:
-        exec(stream.read(), version_content)
-    addon_version = version_content["__version__"]
-
     addon_output_root = os.path.join(output_dir, ADDON_NAME)
     new_created_version_dir = os.path.join(
-        addon_output_root, addon_version
+        addon_output_root, ADDON_VERSION
     )
     if os.path.isdir(new_created_version_dir):
         log.info(f"Purging {new_created_version_dir}")
@@ -328,9 +322,9 @@ def main(
 
     fill_client_version(current_dir)
 
-    log.info(f"Preparing package for {ADDON_NAME}-{addon_version}")
+    log.info(f"Preparing package for {ADDON_NAME}-{ADDON_VERSION}")
 
-    addon_output_dir = os.path.join(output_dir, ADDON_NAME, addon_version)
+    addon_output_dir = os.path.join(output_dir, ADDON_NAME, ADDON_VERSION)
     if not os.path.exists(addon_output_dir):
         os.makedirs(addon_output_dir)
 
@@ -341,7 +335,7 @@ def main(
     # Skip server zipping
     if not skip_zip:
         create_server_package(
-            current_dir, output_dir, addon_output_dir, addon_version, log
+            current_dir, output_dir, addon_output_dir, ADDON_VERSION, log
         )
         # Remove sources only if zip file is created
         if not keep_sources:
