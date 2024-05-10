@@ -4,3 +4,7 @@ name = "ayon_ocio"
 version = "1.1.1-dev.1"
 title = "OCIO Distribution"
 client_dir = "ayon_ocio"
+
+ayon_required_addons = {
+    "core": ">=0.3.0",
+}
