@@ -80,33 +80,142 @@ IGNORE_FILE_PATTERNS: List[Pattern] = [
     }
 ]
 
+# replacement for get_ocio_zip_path()
+def get_ocio_source_paths():
+    return [
+        {
+            "type": "zip",
+            "url": "https://distribute.ynput.io/thirdparty/OpenColorIO-Configs-1.0.2.zip",
+            "path": os.path.join(CURRENT_ROOT, "downloads", "OpenColorIO-Configs-1.0.2.zip"),
+            "checksum": "51285a1350b31855f831d12d30ede727"
+        },
+        {
+            "type": "ocio",
+            "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO-Config-ACES/releases/download/v1.0.0/studio-config-v1.0.0_aces-v1.3_ocio-v2.0.ocio"
+        },
+        {
+            "type": "ocio",
+            "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO-Config-ACES/releases/download/v1.0.0/studio-config-v1.0.0_aces-v1.3_ocio-v2.1.ocio"
+        },
+        {
+            "type": "ocio",
+            "url": "https://github.com/AcademySoftwareFoundation/OpenColorIO-Config-ACES/releases/download/v3.0.0/studio-config-v3.0.0_aces-v2.0_ocio-v2.4.ocio"
+        }
+    ]
 
-def get_ocio_zip_path():
-    return os.path.join(
-        CURRENT_ROOT, "downloads", "OpenColorIO-Configs-1.0.2.zip"
-    )
+def download_ocio_sources(log):
+    """Download all OCIO sources defined in get_ocio_source_paths."""
+    sources = get_ocio_source_paths()
+    downloaded_sources = []
+
+    for source in sources:
+        source_type = source["type"]
+        url = source["url"]
+
+        try:
+            if source_type == "zip":
+                path = source["path"]
+                checksum = source.get("checksum")
+                download_dir = os.path.dirname(path)
+                os.makedirs(download_dir, exist_ok=True)
+
+                # Check if file exists and has correct checksum
+                if os.path.exists(path) and checksum:
+                    with open(path, "rb") as stream:
+                        file_checksum = hashlib.md5(stream.read()).hexdigest()
+                    if checksum == file_checksum:
+                        log.debug(f"OCIO zip is already downloaded {path}")
+                        downloaded_sources.append(source)
+                        continue
+
+                log.debug(f"OCIO zip from {url} -> {path}")
+                log.info(f"OCIO zip download from {url} - started")
+
+                try:
+                    urllib.request.urlretrieve(url, path)
+                    log.info(f"OCIO zip download from {url} - finished")
+                    downloaded_sources.append(source)
+                except urllib.error.URLError as e:
+                    log.error(f"Failed to download OCIO zip from {url}: {e}")
+                    # Add the source with a placeholder path if the file exists
+                    if os.path.exists(path):
+                        log.warning(f"Using existing file at {path}")
+                        downloaded_sources.append(source)
+
+            elif source_type == "ocio":
+                # For OCIO files, download directly to a temporary file
+                filename = os.path.basename(url)
+                download_dir = os.path.join(CURRENT_ROOT, "downloads", "ocio_configs")
+                path = os.path.join(download_dir, filename)
+                os.makedirs(download_dir, exist_ok=True)
+
+                if os.path.exists(path):
+                    log.debug(f"OCIO config already exists at {path}")
+                    source["path"] = path
+                    downloaded_sources.append(source)
+                    continue
+
+                log.debug(f"OCIO config from {url} -> {path}")
+                log.info(f"OCIO config download from {url} - started")
+
+                try:
+                    urllib.request.urlretrieve(url, path)
+                    log.info(f"OCIO config download from {url} - finished")
+                    source["path"] = path
+                    downloaded_sources.append(source)
+                except urllib.error.URLError as e:
+                    log.error(f"Failed to download OCIO config from {url}: {e}")
+        except Exception as e:
+            log.error(f"Unexpected error processing source {url}: {e}")
+
+    if not downloaded_sources:
+        log.warning("No OCIO sources were successfully downloaded or found.")
+
+    return downloaded_sources
 
 
-def download_ocio_zip(log):
-    ocio_zip_path = get_ocio_zip_path()
-    download_dir, filename = os.path.split(ocio_zip_path)
-    src_url = "https://distribute.openpype.io/thirdparty/{}".format(filename)
-    checksum = "51285a1350b31855f831d12d30ede727"  # md5
-    os.makedirs(download_dir, exist_ok=True)
+def get_client_files_mapping() -> List[FileMapping]:
+    """Mapping of source client code files to destination paths."""
+    # Add client code content to zip
+    client_code_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
 
-    if os.path.exists(ocio_zip_path):
-        with open(ocio_zip_path, "rb") as stream:
-            file_checksum = hashlib.md5(stream.read()).hexdigest()
-        if checksum == file_checksum:
-            log.debug(f"OCIO zip is already downloaded {ocio_zip_path}")
-            return ocio_zip_path
+    files_mapping: List[FileMapping] = [
+        (path, os.path.join(ADDON_CLIENT_DIR, sub_path))
+        for path, sub_path in find_files_in_subdir(client_code_dir)
+    ]
 
-    log.debug(f"OCIO zip from {src_url} -> {ocio_zip_path}")
+    # Get all OCIO sources
+    ocio_sources = get_ocio_source_paths()
 
-    log.info("OCIO zip download - started")
-    urllib.request.urlretrieve(src_url, ocio_zip_path)
-    log.info("OCIO zip download - finished")
-    return ocio_zip_path
+    for source in ocio_sources:
+        source_type = source["type"]
+
+        if source_type == "zip":
+            zip_path = source["path"]
+            with ZipFileLongPaths(zip_path) as ocio_zip:
+                for path_item in ocio_zip.infolist():
+                    if path_item.is_dir():
+                        continue
+                    src_path = path_item.filename
+                    dst_path = os.path.join(ADDON_CLIENT_DIR, "configs", src_path)
+                    content = io.BytesIO(ocio_zip.read(src_path))
+                    files_mapping.append((content, dst_path))
+
+        elif source_type == "ocio":
+            # For OCIO files, add them directly to configs folder
+            filename = os.path.basename(source["url"])
+            # Use the path if it's already been downloaded, otherwise use the URL
+            if "path" in source:
+                with open(source["path"], "rb") as f:
+                    content = io.BytesIO(f.read())
+            else:
+                # If not already downloaded, download it now
+                content = io.BytesIO(urllib.request.urlopen(source["url"]).read())
+
+            dst_path = os.path.join(ADDON_CLIENT_DIR, "configs", filename)
+            files_mapping.append((content, dst_path))
+
+    return files_mapping
 
 
 class ZipFileLongPaths(zipfile.ZipFile):
@@ -258,46 +367,6 @@ def build_frontend():
         )
 
 
-def get_client_files_mapping() -> List[FileMapping]:
-    """Mapping of source client code files to destination paths.
-
-    Example output:
-        [
-            (
-                "C:/addons/MyAddon/version.py",
-                "my_addon/version.py"
-            ),
-            (
-                "C:/addons/MyAddon/client/my_addon/__init__.py",
-                "my_addon/__init__.py"
-            )
-        ]
-
-    Returns:
-        List[FileMapping]: List of path mappings to
-            copy. The destination path is relative to expected output
-            directory.
-
-    """
-    # Add client code content to zip
-    client_code_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
-
-    files_mapping: List[FileMapping] = [
-        (path, os.path.join(ADDON_CLIENT_DIR, sub_path))
-        for path, sub_path in find_files_in_subdir(client_code_dir)
-    ]
-    with ZipFileLongPaths(get_ocio_zip_path()) as ocio_zip:
-        for path_item in ocio_zip.infolist():
-            if path_item.is_dir():
-                continue
-            src_path = path_item.filename
-            dst_path = os.path.join(ADDON_CLIENT_DIR, "configs", src_path)
-            content = io.BytesIO(ocio_zip.read(src_path))
-
-            files_mapping.append((content, dst_path))
-    return files_mapping
-
-
 def get_client_zip_content(log) -> io.BytesIO:
     log.info("Preparing client code zip")
     files_mapping: List[FileMapping] = get_client_files_mapping()
@@ -442,7 +511,17 @@ def main(
     log: logging.Logger = logging.getLogger("create_package")
     log.info("Package creation started")
 
-    download_ocio_zip(log)
+    # Download all OCIO sources
+    try:
+        ocio_sources = download_ocio_sources(log)
+    except Exception as e:
+        log.error(f"Failed to download OCIO sources: {e}")
+        log.warning("Continuing without OCIO sources. The package may be incomplete.")
+        ocio_sources = []
+
+    if not ocio_sources:
+        log.warning("No OCIO sources were successfully downloaded or found.")
+        return
 
     if not output_dir:
         output_dir = os.path.join(CURRENT_ROOT, "package")
