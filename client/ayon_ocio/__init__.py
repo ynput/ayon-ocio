@@ -33,7 +33,7 @@ class OCIODistAddon(AYONAddon):
         """
 
         return os.path.join(
-            CONFIG_ROOT
+            CONFIG_ROOT, "OpenColorIOConfigs"
         )
 
 

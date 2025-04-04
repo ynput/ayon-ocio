@@ -34,6 +34,7 @@ import zipfile
 import hashlib
 import subprocess
 import urllib.request
+import urllib.error
 from typing import Optional, Iterable, Pattern, Union, List, Tuple
 
 import package
@@ -51,6 +52,7 @@ DST_DIST_DIR: str = os.path.join("frontend", "dist")
 PRIVATE_ROOT: str = os.path.join(CURRENT_ROOT, "private")
 PUBLIC_ROOT: str = os.path.join(CURRENT_ROOT, "public")
 CLIENT_ROOT: str = os.path.join(CURRENT_ROOT, "client")
+CONFIGS_FOLDER_NAME: str = "OpenColorIOConfigs"
 
 VERSION_PY_CONTENT = f'''# -*- coding: utf-8 -*-
 """Package declaring AYON addon '{ADDON_NAME}' version."""
@@ -175,6 +177,9 @@ def download_ocio_sources(log):
 
 
 def get_client_files_mapping() -> List[FileMapping]:
+    # fixing pyright linking error
+    assert ADDON_CLIENT_DIR is not None, "ADDON_CLIENT_DIR must not be None"
+
     """Mapping of source client code files to destination paths."""
     # Add client code content to zip
     client_code_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
@@ -197,7 +202,8 @@ def get_client_files_mapping() -> List[FileMapping]:
                     if path_item.is_dir():
                         continue
                     src_path = path_item.filename
-                    dst_path = os.path.join(ADDON_CLIENT_DIR, "configs", src_path)
+                    dst_path = os.path.join(
+                        ADDON_CLIENT_DIR, "configs", src_path)
                     content = io.BytesIO(ocio_zip.read(src_path))
                     files_mapping.append((content, dst_path))
 
@@ -212,7 +218,7 @@ def get_client_files_mapping() -> List[FileMapping]:
                 # If not already downloaded, download it now
                 content = io.BytesIO(urllib.request.urlopen(source["url"]).read())
 
-            dst_path = os.path.join(ADDON_CLIENT_DIR, "configs", filename)
+            dst_path = os.path.join(ADDON_CLIENT_DIR, "configs", CONFIGS_FOLDER_NAME, filename)
             files_mapping.append((content, dst_path))
 
     return files_mapping
@@ -236,7 +242,7 @@ class ZipFileLongPaths(zipfile.ZipFile):
             else:
                 tpath = "\\\\?\\" + tpath
 
-        return super()._extract_member(member, tpath, pwd)
+        return super()._extract_member(member, tpath, pwd)  # type: ignore
 
 
 def _get_yarn_executable() -> Union[str, None]:
@@ -510,6 +516,8 @@ def main(
 ):
     log: logging.Logger = logging.getLogger("create_package")
     log.info("Package creation started")
+
+    assert ADDON_CLIENT_DIR is not None, "ADDON_CLIENT_DIR must not be None"
 
     # Download all OCIO sources
     try:
