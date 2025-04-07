@@ -417,13 +417,14 @@ def copy_client_code(output_dir: str, log: logging.Logger):
         shutil.rmtree(full_output_path)
     os.makedirs(full_output_path, exist_ok=True)
 
-    for src_path, dst_subpath in get_client_files_mapping():
+    for src_path, dst_subpath in get_client_files_mapping(log):
         dst_path = os.path.join(full_output_path, dst_subpath)
         if isinstance(src_path, io.BytesIO):
             os.makedirs(os.path.dirname(dst_path), exist_ok=True)
             with open(dst_path, "wb") as stream:
                 stream.write(src_path.getvalue())
-        safe_copy_file(src_path, dst_path)
+        else:
+            safe_copy_file(src_path, dst_path)
 
     log.info("Client copy finished")
 
