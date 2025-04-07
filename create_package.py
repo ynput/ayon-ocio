@@ -157,36 +157,6 @@ def download_ocio_sources(log):
     return downloaded_sources
 
 
-def get_client_files_mapping(log) -> List[FileMapping]:
-    ocio_zip_path = download_ocio_zip(log)
-    ocio_sources_info = download_ocio_sources(log)
-
-    """Mapping of source client code files to destination paths."""
-    # Add client code content to zip
-    client_code_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
-
-    files_mapping: List[FileMapping] = [
-        (path, os.path.join(ADDON_CLIENT_DIR, sub_path))
-        for path, sub_path in find_files_in_subdir(client_code_dir)
-    ]
-
-    with ZipFileLongPaths(ocio_zip_path) as ocio_zip:
-        for path_item in ocio_zip.infolist():
-            if path_item.is_dir():
-                continue
-            src_path = path_item.filename
-            dst_path = os.path.join(
-                ADDON_CLIENT_DIR, "configs", src_path)
-            content = io.BytesIO(ocio_zip.read(src_path))
-            files_mapping.append((content, dst_path))
-
-    # Get all OCIO sources
-    for (filepath, target_subpath) in ocio_sources_info:
-        files_mapping.append((content, target_subpath))
-
-    return files_mapping
-
-
 class ZipFileLongPaths(zipfile.ZipFile):
     """Allows longer paths in zip files.
 
@@ -334,6 +304,36 @@ def build_frontend():
         raise RuntimeError(
             "Frontend build failed. Did not find 'dist' folder."
         )
+
+
+def get_client_files_mapping(log) -> List[FileMapping]:
+    ocio_zip_path = download_ocio_zip(log)
+    ocio_sources_info = download_ocio_sources(log)
+
+    """Mapping of source client code files to destination paths."""
+    # Add client code content to zip
+    client_code_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
+
+    files_mapping: List[FileMapping] = [
+        (path, os.path.join(ADDON_CLIENT_DIR, sub_path))
+        for path, sub_path in find_files_in_subdir(client_code_dir)
+    ]
+
+    with ZipFileLongPaths(ocio_zip_path) as ocio_zip:
+        for path_item in ocio_zip.infolist():
+            if path_item.is_dir():
+                continue
+            src_path = path_item.filename
+            dst_path = os.path.join(
+                ADDON_CLIENT_DIR, "configs", src_path)
+            content = io.BytesIO(ocio_zip.read(src_path))
+            files_mapping.append((content, dst_path))
+
+    # Get all OCIO sources
+    for (filepath, target_subpath) in ocio_sources_info:
+        files_mapping.append((content, target_subpath))
+
+    return files_mapping
 
 
 def get_client_zip_content(log) -> io.BytesIO:
