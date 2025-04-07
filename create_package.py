@@ -342,9 +342,9 @@ def get_client_files_mapping(log) -> List[FileMapping]:
             if path_item.is_dir():
                 continue
             src_path = path_item.filename
-            dst_path = os.path.join(
-                ADDON_CLIENT_DIR, "configs", src_path)
+            dst_path = os.path.join(ADDON_CLIENT_DIR, "configs", src_path)
             content = io.BytesIO(ocio_zip.read(src_path))
+
             files_mapping.append((content, dst_path))
 
     # Get all OCIO sources
