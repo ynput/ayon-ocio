@@ -34,7 +34,6 @@ import zipfile
 import hashlib
 import subprocess
 import urllib.request
-import urllib.error
 from typing import Optional, Iterable, Pattern, Union, List, Tuple
 
 import package
