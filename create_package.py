@@ -307,10 +307,29 @@ def build_frontend():
 
 
 def get_client_files_mapping(log) -> List[FileMapping]:
+    """Mapping of source client code files to destination paths.
+
+    Example output:
+        [
+            (
+                "C:/addons/MyAddon/version.py",
+                "my_addon/version.py"
+            ),
+            (
+                "C:/addons/MyAddon/client/my_addon/__init__.py",
+                "my_addon/__init__.py"
+            )
+        ]
+
+    Returns:
+        List[FileMapping]: List of path mappings to
+            copy. The destination path is relative to expected output
+            directory.
+
+    """
     ocio_zip_path = download_ocio_zip(log)
     ocio_sources_info = download_ocio_sources(log)
 
-    """Mapping of source client code files to destination paths."""
     # Add client code content to zip
     client_code_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
 
