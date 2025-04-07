@@ -42,7 +42,7 @@ import package
 FileMapping = Tuple[Union[str, io.BytesIO], str]
 ADDON_NAME: str = package.name
 ADDON_VERSION: str = package.version
-ADDON_CLIENT_DIR: Union[str, None] = getattr(package, "client_dir", None)
+ADDON_CLIENT_DIR: str = package.client_dir
 
 CURRENT_ROOT: str = os.path.dirname(os.path.abspath(__file__))
 SERVER_ROOT: str = os.path.join(CURRENT_ROOT, "server")
@@ -177,8 +177,6 @@ def download_ocio_sources(log):
 
 
 def get_client_files_mapping() -> List[FileMapping]:
-    # fixing pyright linking error
-    assert ADDON_CLIENT_DIR is not None, "ADDON_CLIENT_DIR must not be None"
 
     """Mapping of source client code files to destination paths."""
     # Add client code content to zip
@@ -517,8 +515,6 @@ def main(
     log: logging.Logger = logging.getLogger("create_package")
     log.info("Package creation started")
 
-    assert ADDON_CLIENT_DIR is not None, "ADDON_CLIENT_DIR must not be None"
-
     # Download all OCIO sources
     try:
         ocio_sources = download_ocio_sources(log)
@@ -534,20 +530,15 @@ def main(
     if not output_dir:
         output_dir = os.path.join(CURRENT_ROOT, "package")
 
-    has_client_code = bool(ADDON_CLIENT_DIR)
-    if has_client_code:
-        client_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
-        if not os.path.exists(client_dir):
-            raise RuntimeError(
-                f"Client directory was not found '{client_dir}'."
-                " Please check 'client_dir' in 'package.py'."
-            )
-        update_client_version(log)
+    client_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
+    if not os.path.exists(client_dir):
+        raise RuntimeError(
+            f"Client directory was not found '{client_dir}'."
+            " Please check 'client_dir' in 'package.py'."
+        )
+    update_client_version(log)
 
     if only_client:
-        if not has_client_code:
-            raise RuntimeError("Client code is not available. Skipping")
-
         copy_client_code(output_dir, log)
         return
 
@@ -559,10 +550,9 @@ def main(
     files_mapping: List[FileMapping] = []
     files_mapping.extend(get_base_files_mapping())
 
-    if has_client_code:
-        files_mapping.append(
-            (get_client_zip_content(log), "private/client.zip")
-        )
+    files_mapping.append(
+        (get_client_zip_content(log), "private/client.zip")
+    )
 
     # Skip server zipping
     if skip_zip:
