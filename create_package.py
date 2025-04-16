@@ -41,9 +41,10 @@ import package
 FileMapping = Tuple[Union[str, io.BytesIO], str]
 ADDON_NAME: str = package.name
 ADDON_VERSION: str = package.version
-ADDON_CLIENT_DIR: Union[str, None] = getattr(package, "client_dir", None)
+ADDON_CLIENT_DIR: str = package.client_dir
 
 CURRENT_ROOT: str = os.path.dirname(os.path.abspath(__file__))
+DOWNLOADS_ROOT: str = os.path.join(CURRENT_ROOT, "downloads")
 SERVER_ROOT: str = os.path.join(CURRENT_ROOT, "server")
 FRONTEND_ROOT: str = os.path.join(CURRENT_ROOT, "frontend")
 FRONTEND_DIST_ROOT: str = os.path.join(FRONTEND_ROOT, "dist")
@@ -51,6 +52,7 @@ DST_DIST_DIR: str = os.path.join("frontend", "dist")
 PRIVATE_ROOT: str = os.path.join(CURRENT_ROOT, "private")
 PUBLIC_ROOT: str = os.path.join(CURRENT_ROOT, "public")
 CLIENT_ROOT: str = os.path.join(CURRENT_ROOT, "client")
+CONFIGS_FOLDER_NAME: str = "OpenColorIOConfigs"
 
 VERSION_PY_CONTENT = f'''# -*- coding: utf-8 -*-
 """Package declaring AYON addon '{ADDON_NAME}' version."""
@@ -80,33 +82,87 @@ IGNORE_FILE_PATTERNS: List[Pattern] = [
     }
 ]
 
+OCIO_CONFIGS_FILENAME = "OpenColorIO-Configs-1.0.2.zip"
+# sha256 checksum
+OCIO_CONFIGS_CHECKSUM = "4ac17c1f7de83465e6f51dd352d7117e07e765b66d00443257916c828e35b6ce"
 
-def get_ocio_zip_path():
-    return os.path.join(
-        CURRENT_ROOT, "downloads", "OpenColorIO-Configs-1.0.2.zip"
-    )
+OCIO_RELEASE_DOWNLOAD_URL = "https://github.com/AcademySoftwareFoundation/OpenColorIO-Config-ACES/releases/download"
+OCIO_SOURCES = [
+    {
+        "url": f"{OCIO_RELEASE_DOWNLOAD_URL}/v1.0.0/studio-config-v1.0.0_aces-v1.3_ocio-v2.0.ocio",
+        "checksum": "48fbb8c4771b2f7e2be9b48e67a7d6c8d4ce067f4914639e632c2f0d2d09e807",
+        "subdir": "aces_1.3",
+    },
+    {
+        "url": f"{OCIO_RELEASE_DOWNLOAD_URL}/v1.0.0/studio-config-v1.0.0_aces-v1.3_ocio-v2.1.ocio",
+        "checksum": "2bc58c0f48e805fe14154655cd3b541e6870688c68e06fb84589e249e5dbe0a9",
+        "subdir": "aces_1.3",
+    },
+    {
+        "url": f"{OCIO_RELEASE_DOWNLOAD_URL}/v3.0.0/studio-config-v3.0.0_aces-v2.0_ocio-v2.4.ocio",
+        "checksum": "f2c56b4d1e01471b29b1081b455a37e88e89aade8810204889835ea45029d812",
+        "subdir": "aces_2.0",
+    }
+]
 
 
 def download_ocio_zip(log):
-    ocio_zip_path = get_ocio_zip_path()
-    download_dir, filename = os.path.split(ocio_zip_path)
-    src_url = "https://distribute.openpype.io/thirdparty/{}".format(filename)
-    checksum = "51285a1350b31855f831d12d30ede727"  # md5
-    os.makedirs(download_dir, exist_ok=True)
-
+    ocio_zip_path = os.path.join(DOWNLOADS_ROOT, OCIO_CONFIGS_FILENAME)
+    src_url = f"https://distribute.ynput.io/thirdparty/{OCIO_CONFIGS_FILENAME}"
+    os.makedirs(DOWNLOADS_ROOT, exist_ok=True)
     if os.path.exists(ocio_zip_path):
         with open(ocio_zip_path, "rb") as stream:
-            file_checksum = hashlib.md5(stream.read()).hexdigest()
-        if checksum == file_checksum:
+            file_checksum = hashlib.sha256(stream.read()).hexdigest()
+        if OCIO_CONFIGS_CHECKSUM == file_checksum:
             log.debug(f"OCIO zip is already downloaded {ocio_zip_path}")
             return ocio_zip_path
 
     log.debug(f"OCIO zip from {src_url} -> {ocio_zip_path}")
-
     log.info("OCIO zip download - started")
     urllib.request.urlretrieve(src_url, ocio_zip_path)
     log.info("OCIO zip download - finished")
     return ocio_zip_path
+
+
+def download_ocio_sources(log):
+    """Download all OCIO sources defined in get_ocio_source_paths."""
+    downloaded_sources = []
+
+    for source in OCIO_SOURCES:
+        url = source["url"]
+        subdir = source.get("subdir")
+
+        # For OCIO files, download directly to a temporary file
+        filename = os.path.basename(url)
+        filepath = os.path.join(DOWNLOADS_ROOT, filename)
+
+        subpath = filename
+        if subdir:
+            subpath = os.path.join(subdir, filename)
+
+        target_subdir = os.path.join(
+            ADDON_CLIENT_DIR, "configs", CONFIGS_FOLDER_NAME, subpath
+        )
+        downloaded_sources.append(
+            (filepath, target_subdir)
+        )
+
+        os.makedirs(DOWNLOADS_ROOT, exist_ok=True)
+
+        if os.path.exists(filepath):
+            with open(filepath, "rb") as stream:
+                file_checksum = hashlib.sha256(stream.read()).hexdigest()
+
+            if source["checksum"] == file_checksum:
+                log.debug(f"OCIO config is already downloaded {filepath}")
+                continue
+
+        log.debug(f"OCIO config from {url} -> {filepath}")
+        log.info(f"OCIO config download from {url} - started")
+        urllib.request.urlretrieve(url, filepath)
+        log.info(f"OCIO config download from {url} - finished")
+
+    return downloaded_sources
 
 
 class ZipFileLongPaths(zipfile.ZipFile):
@@ -127,7 +183,7 @@ class ZipFileLongPaths(zipfile.ZipFile):
             else:
                 tpath = "\\\\?\\" + tpath
 
-        return super()._extract_member(member, tpath, pwd)
+        return super()._extract_member(member, tpath, pwd)  # type: ignore
 
 
 def _get_yarn_executable() -> Union[str, None]:
@@ -258,7 +314,7 @@ def build_frontend():
         )
 
 
-def get_client_files_mapping() -> List[FileMapping]:
+def get_client_files_mapping(log) -> List[FileMapping]:
     """Mapping of source client code files to destination paths.
 
     Example output:
@@ -279,6 +335,9 @@ def get_client_files_mapping() -> List[FileMapping]:
             directory.
 
     """
+    ocio_zip_path = download_ocio_zip(log)
+    ocio_sources_info = download_ocio_sources(log)
+
     # Add client code content to zip
     client_code_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
 
@@ -286,7 +345,8 @@ def get_client_files_mapping() -> List[FileMapping]:
         (path, os.path.join(ADDON_CLIENT_DIR, sub_path))
         for path, sub_path in find_files_in_subdir(client_code_dir)
     ]
-    with ZipFileLongPaths(get_ocio_zip_path()) as ocio_zip:
+
+    with ZipFileLongPaths(ocio_zip_path) as ocio_zip:
         for path_item in ocio_zip.infolist():
             if path_item.is_dir():
                 continue
@@ -295,12 +355,17 @@ def get_client_files_mapping() -> List[FileMapping]:
             content = io.BytesIO(ocio_zip.read(src_path))
 
             files_mapping.append((content, dst_path))
+
+    # Get all OCIO sources
+    for (filepath, target_subpath) in ocio_sources_info:
+        files_mapping.append((content, target_subpath))
+
     return files_mapping
 
 
 def get_client_zip_content(log) -> io.BytesIO:
     log.info("Preparing client code zip")
-    files_mapping: List[FileMapping] = get_client_files_mapping()
+    files_mapping: List[FileMapping] = get_client_files_mapping(log)
     stream = io.BytesIO()
     with ZipFileLongPaths(stream, "w", zipfile.ZIP_DEFLATED) as zipf:
         for src_path, subpath in files_mapping:
@@ -360,13 +425,14 @@ def copy_client_code(output_dir: str, log: logging.Logger):
         shutil.rmtree(full_output_path)
     os.makedirs(full_output_path, exist_ok=True)
 
-    for src_path, dst_subpath in get_client_files_mapping():
+    for src_path, dst_subpath in get_client_files_mapping(log):
         dst_path = os.path.join(full_output_path, dst_subpath)
         if isinstance(src_path, io.BytesIO):
             os.makedirs(os.path.dirname(dst_path), exist_ok=True)
             with open(dst_path, "wb") as stream:
                 stream.write(src_path.getvalue())
-        safe_copy_file(src_path, dst_path)
+        else:
+            safe_copy_file(src_path, dst_path)
 
     log.info("Client copy finished")
 
@@ -442,25 +508,18 @@ def main(
     log: logging.Logger = logging.getLogger("create_package")
     log.info("Package creation started")
 
-    download_ocio_zip(log)
-
     if not output_dir:
         output_dir = os.path.join(CURRENT_ROOT, "package")
 
-    has_client_code = bool(ADDON_CLIENT_DIR)
-    if has_client_code:
-        client_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
-        if not os.path.exists(client_dir):
-            raise RuntimeError(
-                f"Client directory was not found '{client_dir}'."
-                " Please check 'client_dir' in 'package.py'."
-            )
-        update_client_version(log)
+    client_dir: str = os.path.join(CLIENT_ROOT, ADDON_CLIENT_DIR)
+    if not os.path.exists(client_dir):
+        raise RuntimeError(
+            f"Client directory was not found '{client_dir}'."
+            " Please check 'client_dir' in 'package.py'."
+        )
+    update_client_version(log)
 
     if only_client:
-        if not has_client_code:
-            raise RuntimeError("Client code is not available. Skipping")
-
         copy_client_code(output_dir, log)
         return
 
@@ -472,10 +531,9 @@ def main(
     files_mapping: List[FileMapping] = []
     files_mapping.extend(get_base_files_mapping())
 
-    if has_client_code:
-        files_mapping.append(
-            (get_client_zip_content(log), "private/client.zip")
-        )
+    files_mapping.append(
+        (get_client_zip_content(log), "private/client.zip")
+    )
 
     # Skip server zipping
     if skip_zip:
