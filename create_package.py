@@ -91,14 +91,17 @@ OCIO_SOURCES = [
     {
         "url": f"{OCIO_RELEASE_DOWNLOAD_URL}/v1.0.0/studio-config-v1.0.0_aces-v1.3_ocio-v2.0.ocio",
         "checksum": "48fbb8c4771b2f7e2be9b48e67a7d6c8d4ce067f4914639e632c2f0d2d09e807",
+        "subdir": "aces_1.3",
     },
     {
         "url": f"{OCIO_RELEASE_DOWNLOAD_URL}/v1.0.0/studio-config-v1.0.0_aces-v1.3_ocio-v2.1.ocio",
         "checksum": "2bc58c0f48e805fe14154655cd3b541e6870688c68e06fb84589e249e5dbe0a9",
+        "subdir": "aces_1.3",
     },
     {
         "url": f"{OCIO_RELEASE_DOWNLOAD_URL}/v3.0.0/studio-config-v3.0.0_aces-v2.0_ocio-v2.4.ocio",
         "checksum": "f2c56b4d1e01471b29b1081b455a37e88e89aade8810204889835ea45029d812",
+        "subdir": "aces_2.0",
     }
 ]
 
@@ -127,12 +130,18 @@ def download_ocio_sources(log):
 
     for source in OCIO_SOURCES:
         url = source["url"]
+        subdir = source.get("subdir")
 
         # For OCIO files, download directly to a temporary file
         filename = os.path.basename(url)
         filepath = os.path.join(DOWNLOADS_ROOT, filename)
+
+        subpath = filename
+        if subdir:
+            subpath = os.path.join(subdir, filename)
+
         target_subdir = os.path.join(
-            ADDON_CLIENT_DIR, "configs", CONFIGS_FOLDER_NAME, filename
+            ADDON_CLIENT_DIR, "configs", CONFIGS_FOLDER_NAME, subpath
         )
         downloaded_sources.append(
             (filepath, target_subdir)
