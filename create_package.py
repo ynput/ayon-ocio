@@ -358,7 +358,7 @@ def get_client_files_mapping(log) -> List[FileMapping]:
 
     # Get all OCIO sources
     for (filepath, target_subpath) in ocio_sources_info:
-        files_mapping.append((content, target_subpath))
+        files_mapping.append((filepath, target_subpath))
 
     return files_mapping
 
