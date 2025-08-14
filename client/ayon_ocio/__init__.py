@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 
 from ayon_core.addon import AYONAddon
@@ -19,13 +21,13 @@ class OCIODistAddon(AYONAddon):
     name = "ayon_ocio"
     version = __version__
 
-    def get_global_environments(self):
+    def get_global_environments(self) -> dict[str, str]:
         return {
             "BUILTIN_OCIO_ROOT": self.get_ocio_config_dir()
         }
 
     @classmethod
-    def get_ocio_config_dir(cls):
+    def get_ocio_config_dir(cls) -> str:
         """Get OCIO config dir and download then if are not available.
 
         Returns:
@@ -38,5 +40,5 @@ class OCIODistAddon(AYONAddon):
         )
 
 
-def get_ocio_config_path():
+def get_ocio_config_path() -> str:
     return OCIODistAddon.get_ocio_config_dir()
